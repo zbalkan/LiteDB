@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -11,6 +11,8 @@ namespace LiteDB
     /// <summary>
     /// The LiteDB repository pattern. A simple way to access your documents in a single class with fluent query api
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(AotCompatibility.ModelMappingRequiresSourceGen)]
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode(AotCompatibility.RuntimeTypeConstruction)]
     public class LiteRepository : ILiteRepository
     {
         #region Properties

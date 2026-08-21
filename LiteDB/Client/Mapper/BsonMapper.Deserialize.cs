@@ -115,6 +115,14 @@ namespace LiteDB
             }
 
             // test if has a custom type implementation
+            if (TryGetGeneratedValueContract(type, out _, out var generated))
+            {
+                return generated(this, value);
+            }
+            if (TryGetGeneratedCollectionContract(type, out _, out var collectionDeserialize))
+            {
+                return collectionDeserialize(this, value.AsArray);
+            }
             if (_customDeserializer.TryGetValue(type, out Func<BsonValue, object> custom))
             {
                 return custom(value);
@@ -220,8 +228,10 @@ namespace LiteDB
                     ?? GetTypeCtor(entity) 
                     ?? ((BsonDocument _) => Reflection.CreateInstance(entity.ForType));
 
-                object instance = _typeInstantiator(type) 
-                    ?? entity.CreateInstance(doc);
+                var instance = _typeInstantiator(type) ??
+                    (entity.CreateInstanceWithMapper != null
+                        ? entity.CreateInstanceWithMapper(this, doc)
+                        : entity.CreateInstance(doc));
 
                 if (instance is IDictionary dict)
                 {
@@ -250,6 +260,8 @@ namespace LiteDB
             return value.RawValue;
         }
 
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026", Justification = AotCompatibility.InternalReflectionHelperJustification)]
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050", Justification = AotCompatibility.InternalReflectionHelperJustification)]
         private object DeserializeArray(Type type, BsonArray array)
         {
             var arr = Array.CreateInstance(type, array.Count);
@@ -263,6 +275,8 @@ namespace LiteDB
             return arr;
         }
 
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026", Justification = AotCompatibility.InternalReflectionHelperJustification)]
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050", Justification = AotCompatibility.InternalReflectionHelperJustification)]
         private object DeserializeList(Type type, BsonArray value)
         {
             var itemType = Reflection.GetListItemType(type);
@@ -288,6 +302,8 @@ namespace LiteDB
             return enumerable;
         }
 
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026", Justification = AotCompatibility.InternalReflectionHelperJustification)]
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050", Justification = AotCompatibility.InternalReflectionHelperJustification)]
         private void DeserializeDictionary(Type keyType, Type valueType, IDictionary dict, BsonDocument value)
         {
             foreach (KeyValuePair<string, BsonValue> element in value.GetElements())
@@ -314,6 +330,8 @@ namespace LiteDB
             }
         }
 
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026", Justification = AotCompatibility.InternalReflectionHelperJustification)]
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050", Justification = AotCompatibility.InternalReflectionHelperJustification)]
         private void DeserializeObject(EntityMapper entity, object obj, BsonDocument value)
         {
             foreach (var member in entity.Members.Where(x => x.Setter != null))
@@ -333,6 +351,8 @@ namespace LiteDB
             }
         }
 
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026", Justification = AotCompatibility.InternalReflectionHelperJustification)]
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050", Justification = AotCompatibility.InternalReflectionHelperJustification)]
         private object DeserializeAnonymousType(Type type, BsonDocument value)
         {
             var args = new List<object>();

@@ -225,3 +225,4 @@ FakesAssemblies/
 #!**/packages/repositories.config
 /LiteDB.BadJsonTest
 repro-summary.json
+BenchmarkDotNet.Artifacts/results/**

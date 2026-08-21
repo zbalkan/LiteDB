@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <LiteDBTestsEnableNet10 Condition="'$(LiteDBTestsEnableNet10)' == ''">false</LiteDBTestsEnableNet10>
@@ -11,6 +11,8 @@
     <Copyright>MIT</Copyright>
     <NeutralLanguage>en-US</NeutralLanguage>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
     <NoWarn>1701;1702;1705;1591;0618</NoWarn>
     <DefineConstants Condition="'$(TargetFrameworkIdentifier)' == '.NETFramework'">$(DefineConstants);NETFRAMEWORK</DefineConstants>
     <DefineConstants Condition="'$(TargetFramework)' == 'net461'">$(DefineConstants);NETFRAMEWORK</DefineConstants>
@@ -65,6 +67,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\LiteDB\LiteDB.csproj" />
+        <ProjectReference
+      Include="..\LiteDB.Generator\LiteDB.Generator.csproj"
+      OutputItemType="Analyzer"
+      ReferenceOutputAssembly="false"
+    />
   </ItemGroup>
 
 </Project>

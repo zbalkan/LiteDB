@@ -1,10 +1,12 @@
-﻿using LiteDB.Engine;
+using LiteDB.Engine;
 using System;
 using System.Collections.Generic;
 using static LiteDB.Constants;
 
 namespace LiteDB
 {
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026", Justification = AotCompatibility.InternalReflectionHelperJustification)]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050", Justification = AotCompatibility.InternalReflectionHelperJustification)]
     public sealed partial class LiteCollection<T> : ILiteCollection<T>
     {
         private readonly string _collection;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,6 +10,8 @@ namespace LiteDB
     /// <summary>
     /// Storage is a special collection to store files and streams.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026", Justification = AotCompatibility.InternalReflectionHelperJustification)]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050", Justification = AotCompatibility.InternalReflectionHelperJustification)]
     public class LiteStorage<TFileId> : ILiteStorage<TFileId>
     {
         private readonly ILiteDatabase _db;

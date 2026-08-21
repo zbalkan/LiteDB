@@ -22,6 +22,11 @@ namespace LiteDB
     ///     - IList, Array supports
     ///     - IDictionary supports (Key must be a simple datatype - converted by ChangeType)
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2067", Justification = AotCompatibility.InternalReflectionHelperJustification)]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070", Justification = AotCompatibility.InternalReflectionHelperJustification)]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2072", Justification = AotCompatibility.InternalReflectionHelperJustification)]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075", Justification = AotCompatibility.InternalReflectionHelperJustification)]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050", Justification = AotCompatibility.InternalReflectionHelperJustification)]
     public partial class BsonMapper
     {
         #region Properties

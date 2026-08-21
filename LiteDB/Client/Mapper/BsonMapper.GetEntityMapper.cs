@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using LiteDB.AOT;
 
 namespace LiteDB;
 
@@ -22,6 +23,17 @@ public partial class BsonMapper
         if (_entities.TryGetValue(type, out EntityMapper mapper))
         {
             return mapper;
+        }
+
+        if (TryGetGeneratedEntityMapper(type, out mapper))
+        {
+            _entities[type] = mapper;
+            return mapper;
+        }
+
+        if (IsStrictGeneratedMode)
+        {
+            throw GeneratedContractErrors.GeneratedMapperNotFound(type);
         }
 
         using var cts = new CancellationTokenSource();

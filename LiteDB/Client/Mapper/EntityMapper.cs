@@ -36,6 +36,11 @@ namespace LiteDB
         /// </summary>
         public CreateObject CreateInstance { get; set; }
 
+        /// <summary>
+        /// Get/Set a generated constructor that can deserialize its arguments directly.
+        /// </summary>
+        public Func<BsonMapper, BsonDocument, object> CreateInstanceWithMapper { get; set; }
+
         public EntityMapper(Type forType, CancellationToken initializationToken = default)
         {
             _initializationToken = initializationToken;

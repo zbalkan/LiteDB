@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.CodeDom;
 using System.Collections;
 using System.Collections.Generic;
@@ -32,6 +32,7 @@ namespace LiteDB
         /// <summary>
         /// Create a new instance from a Type
         /// </summary>
+        [System.Diagnostics.CodeAnalysis.RequiresDynamicCode(AotCompatibility.RuntimeTypeConstruction)]
         public static object CreateInstance(Type type)
         {
             try
@@ -149,18 +150,21 @@ namespace LiteDB
             return type.GetGenericArguments()[0];
         }
 
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050", Justification = AotCompatibility.InternalReflectionHelperJustification)]
         public static Type GetGenericListOfType(Type type)
         {
             var listType = typeof(List<>);
             return listType.MakeGenericType(type);
         }
 
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050", Justification = AotCompatibility.InternalReflectionHelperJustification)]
         public static Type GetGenericSetOfType(Type type)
         {
             var setType = typeof(HashSet<>);
             return setType.MakeGenericType(type);
         }
 
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050", Justification = AotCompatibility.InternalReflectionHelperJustification)]
         public static Type GetGenericDictionaryOfType(Type k, Type v)
         {
             var dictionaryType = typeof(Dictionary<,>);
@@ -170,6 +174,7 @@ namespace LiteDB
         /// <summary>
         /// Get item type from a generic List or Array
         /// </summary>
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070", Justification = AotCompatibility.InternalReflectionHelperJustification)]
         public static Type GetListItemType(Type listType)
         {
             if (listType.IsArray) return listType.GetElementType();
@@ -194,6 +199,7 @@ namespace LiteDB
         /// <summary>
         /// Returns true if Type is any kind of Array/IList/ICollection/....
         /// </summary>
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070", Justification = AotCompatibility.InternalReflectionHelperJustification)]
         public static bool IsEnumerable(Type type)
         {
             if (type == typeof(IEnumerable) || type.IsArray) return true;
@@ -241,6 +247,7 @@ namespace LiteDB
         /// <summary>
         /// Returns true if Type implement ICollection (like List, HashSet)
         /// </summary>
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070", Justification = AotCompatibility.InternalReflectionHelperJustification)]
         public static bool IsCollection(Type type)
         {
             return type.GetTypeInfo().IsGenericType && type.GetGenericTypeDefinition().Equals(typeof(ICollection<>)) ||
@@ -251,6 +258,7 @@ namespace LiteDB
         /// <summary>
         /// Returns if Type is a generic Dictionary
         /// </summary>
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070", Justification = AotCompatibility.InternalReflectionHelperJustification)]
         public static bool IsDictionary(Type type)
         {
             return type.GetTypeInfo().IsGenericType && type.GetGenericTypeDefinition().Equals(typeof(IDictionary<,>)) ||

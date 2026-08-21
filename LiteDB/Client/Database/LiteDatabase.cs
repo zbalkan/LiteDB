@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -173,12 +173,16 @@ namespace LiteDB
         /// </summary>
         public ILiteStorage<string> FileStorage
         {
+            [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(AotCompatibility.ModelMappingRequiresSourceGen)]
+            [System.Diagnostics.CodeAnalysis.RequiresDynamicCode(AotCompatibility.RuntimeTypeConstruction)]
             get { return _fs ?? (_fs = this.GetStorage<string>()); }
         }
 
         /// <summary>
         /// Get new instance of Storage using custom FileId type, custom "_files" collection name and custom "_chunks" collection. LiteDB support multiples file storages (using different files/chunks collection names)
         /// </summary>
+        [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(AotCompatibility.ModelMappingRequiresSourceGen)]
+        [System.Diagnostics.CodeAnalysis.RequiresDynamicCode(AotCompatibility.RuntimeTypeConstruction)]
         public ILiteStorage<TFileId> GetStorage<TFileId>(string filesCollection = "_files", string chunksCollection = "_chunks")
         {
             return new LiteStorage<TFileId>(this, filesCollection, chunksCollection);

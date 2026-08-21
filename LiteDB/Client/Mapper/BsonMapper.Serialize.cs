@@ -53,7 +53,16 @@ namespace LiteDB
             // if is already a bson value
             if (obj is BsonValue bsonValue) return bsonValue;
 
+            if (TryGetGeneratedCollectionContract(type, out var collectionSerialize, out _))
+            {
+                return collectionSerialize(this, obj);
+            }
+
             // check if is a custom type
+            else if (TryGetGeneratedValueContract(type, out var generated, out _))
+            {
+                return generated(this, obj);
+            }
             else if (_customSerializer.TryGetValue(type, out var custom) || _customSerializer.TryGetValue(obj.GetType(), out custom))
             {
                 return custom(obj);
