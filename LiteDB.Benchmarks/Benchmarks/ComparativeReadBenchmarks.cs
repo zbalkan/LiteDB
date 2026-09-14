@@ -114,7 +114,7 @@ namespace LiteDB.Benchmarks.Benchmarks
         public void Cleanup()
         {
             _database?.Dispose();
-            DeleteIfExists(_filename);
+            DeleteDatabaseFiles(_filename);
         }
 
         private LiteDatabase OpenDatabase()
@@ -162,9 +162,22 @@ namespace LiteDB.Benchmarks.Benchmarks
             };
         }
 
+        private static void DeleteDatabaseFiles(string filename)
+        {
+            if (string.IsNullOrEmpty(filename)) return;
+
+            var directory = Path.GetDirectoryName(filename) ?? string.Empty;
+            var stem = Path.GetFileNameWithoutExtension(filename);
+            var extension = Path.GetExtension(filename);
+
+            DeleteIfExists(filename);
+            DeleteIfExists(Path.Combine(directory, stem + "-log" + extension));
+            DeleteIfExists(Path.Combine(directory, stem + "-tmp" + extension));
+        }
+
         private static void DeleteIfExists(string filename)
         {
-            if (!string.IsNullOrEmpty(filename) && File.Exists(filename)) File.Delete(filename);
+            if (File.Exists(filename)) File.Delete(filename);
         }
 
         public sealed class ComparativeDocument
