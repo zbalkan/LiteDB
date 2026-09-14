@@ -8,20 +8,25 @@ The benchmark branch was created from `dev` commit:
 
 `a50661a9d1a25b5713586d0096c6325d76bf5dfe`
 
-This branch must not change scalar-index behavior. Experimental data-structure branches should fork from the commit that introduces this benchmark suite so that the benchmark code and workload definitions remain identical.
+This branch must not change scalar-index behavior. Experimental data-structure branches should fork from the final commit of this benchmark branch so that the benchmark code and workload definitions remain identical.
 
 ## Initial workloads
 
-The first benchmark set isolates four costs that are expected to differ between the current skip list and the selected alternatives:
+The baseline suite exercises costs expected to differ between the current skip list and the selected alternatives:
 
 - indexed point lookup, including hits and misses;
 - bounded indexed range traversal;
+- complete ordered traversal in ascending and descending index order;
 - indexed insertion, separating right-edge sequential insertion from random insertion between existing keys;
+- indexed-key updates, which remove the old secondary-index entry and insert a new one;
+- deletion with one or three secondary scalar indexes, exercising per-document index unlinking;
 - `EnsureIndex` construction over an existing unindexed collection.
 
-Read and build workloads are run for `Int32`, short string, and longer string keys. String keys are zero padded so their lexical order matches their generated ordinal order.
+Read, insertion, update, deletion, and build workloads are run for `Int32`, short string, and longer string keys. String keys are zero padded so their lexical order matches their generated ordinal order.
 
-Dataset sizes are currently 10,000 and 100,000 documents. Range widths are 10, 100, and 1,000 keys. Indexed insertion adds 256 keys per measured invocation.
+Dataset sizes are currently 10,000 and 100,000 documents. Range widths are 10, 100, and 1,000 keys. Mutation benchmarks operate on deterministic batches of 256 documents per measured invocation.
+
+The ordered-scan benchmark deliberately enumerates the returned `BsonDocument` instances. It therefore represents an end-to-end ordered traversal rather than a pure index-node microbenchmark. The bounded range and point benchmarks use `Count(BsonExpression)`, which avoids document deserialization and better isolates indexed lookup/traversal.
 
 ## Reproducibility
 
