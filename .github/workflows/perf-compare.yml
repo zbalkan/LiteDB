@@ -1,0 +1,121 @@
+name: Performance Comparison
+
+on:
+  push:
+    branches:
+      - perf/voron
+      - perf/faster
+      - perf/garnet
+      - perf/tsavorite-cache
+      - perf/dbreeze
+      - perf/btdb
+      - perf/synthesis-r1
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: Candidate branch, tag, or SHA
+        required: true
+        default: perf/voron
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: Compare candidate with frozen baseline
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
+      BASELINE_REF: perf/baseline
+      CANDIDATE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_ref || github.ref_name }}
+    steps:
+      - name: Check out frozen baseline
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASELINE_REF }}
+          path: baseline
+          fetch-depth: 1
+
+      - name: Check out candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_REF }}
+          path: candidate
+          fetch-depth: 1
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Record environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p perf-results
+          {
+            echo "baseline_ref=${BASELINE_REF}"
+            echo "baseline_sha=$(git -C baseline rev-parse HEAD)"
+            echo "candidate_ref=${CANDIDATE_REF}"
+            echo "candidate_sha=$(git -C candidate rev-parse HEAD)"
+            echo
+            dotnet --info
+            echo
+            uname -a
+            echo
+            lscpu || true
+          } | tee perf-results/environment.txt
+
+      - name: Restore baseline benchmark project
+        run: dotnet restore baseline/LiteDB.Benchmarks/LiteDB.Benchmarks.csproj
+
+      - name: Restore candidate benchmark project
+        run: dotnet restore candidate/LiteDB.Benchmarks/LiteDB.Benchmarks.csproj
+
+      - name: Run frozen baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet run -c Release \
+            --project baseline/LiteDB.Benchmarks/LiteDB.Benchmarks.csproj \
+            --no-restore -- \
+            --filter '*Comparative*' \
+            --exporters FullJSON \
+            --artifacts "$GITHUB_WORKSPACE/perf-results/baseline"
+
+      - name: Run candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet run -c Release \
+            --project candidate/LiteDB.Benchmarks/LiteDB.Benchmarks.csproj \
+            --no-restore -- \
+            --filter '*Comparative*' \
+            --exporters FullJSON \
+            --artifacts "$GITHUB_WORKSPACE/perf-results/candidate"
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-comparison-${{ github.run_id }}
+          path: perf-results
+          if-no-files-found: error
+
+      - name: Publish run summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### LiteDB performance comparison"
+            echo "- Baseline: \`${BASELINE_REF}\`"
+            echo "- Candidate: \`${CANDIDATE_REF}\`"
+            echo "- Runner: \`ubuntu-22.04\`"
+            echo "- Runtime: \`.NET 10\`"
+            echo "- Artifact: \`perf-comparison-${{ github.run_id }}\`"
+            echo
+            echo "The baseline and candidate execute sequentially on the same hosted runner. Treat small deltas as noise until repeated."
+          } >> "$GITHUB_STEP_SUMMARY"
