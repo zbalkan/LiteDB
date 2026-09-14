@@ -20,12 +20,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up .NET SDKs
+      - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            10.0.x
-            8.0.x
+          dotnet-version: 10.0.x
 
       - name: Restore benchmark project
         run: dotnet restore LiteDB.Benchmarks/LiteDB.Benchmarks.csproj
@@ -42,6 +40,22 @@ jobs:
           --launchCount 1
           --warmupCount 1
           --iterationCount 3
+
+      - name: Verify benchmark measurements
+        run: |
+          report=$(find BenchmarkDotNet.Artifacts/results -name '*IndexPointLookupBenchmark-report-github.md' -print -quit)
+          test -n "$report"
+          test -s "$report"
+          if grep -R -q 'There are not any results runs\|executed benchmarks: 0' BenchmarkDotNet.Artifacts; then
+            echo 'BenchmarkDotNet produced no measurements.'
+            cat "$report"
+            exit 1
+          fi
+          if ! grep -q 'IndexedHit' "$report" || ! grep -q 'IndexedMiss' "$report"; then
+            echo 'Expected point-lookup benchmark rows were not produced.'
+            cat "$report"
+            exit 1
+          fi
 
       - name: Upload BenchmarkDotNet artifacts
         if: always()
