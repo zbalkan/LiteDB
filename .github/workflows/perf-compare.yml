@@ -51,6 +51,27 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Determine comparison mode
+        id: refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline_sha=$(git -C baseline rev-parse HEAD)
+          candidate_sha=$(git -C candidate rev-parse HEAD)
+          run_benchmarks=true
+
+          # Branch-alignment pushes are not useful benchmark runs. Keep perf/voron
+          # as the baseline-vs-baseline smoke branch so the harness itself remains tested.
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && \
+             [ "$baseline_sha" = "$candidate_sha" ] && \
+             [ "$GITHUB_REF_NAME" != "perf/voron" ]; then
+            run_benchmarks=false
+          fi
+
+          echo "baseline_sha=$baseline_sha" >> "$GITHUB_OUTPUT"
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "run_benchmarks=$run_benchmarks" >> "$GITHUB_OUTPUT"
+
       - name: Record environment
         shell: bash
         run: |
@@ -58,9 +79,10 @@ jobs:
           mkdir -p perf-results
           {
             echo "baseline_ref=${BASELINE_REF}"
-            echo "baseline_sha=$(git -C baseline rev-parse HEAD)"
+            echo "baseline_sha=${{ steps.refs.outputs.baseline_sha }}"
             echo "candidate_ref=${CANDIDATE_REF}"
-            echo "candidate_sha=$(git -C candidate rev-parse HEAD)"
+            echo "candidate_sha=${{ steps.refs.outputs.candidate_sha }}"
+            echo "run_benchmarks=${{ steps.refs.outputs.run_benchmarks }}"
             echo
             dotnet --info
             echo
@@ -70,32 +92,52 @@ jobs:
           } | tee perf-results/environment.txt
 
       - name: Restore baseline benchmark project
-        run: dotnet restore baseline/LiteDB.Benchmarks/LiteDB.Benchmarks.csproj
+        if: steps.refs.outputs.run_benchmarks == 'true'
+        working-directory: baseline
+        run: dotnet restore LiteDB.Benchmarks/LiteDB.Benchmarks.csproj
 
       - name: Restore candidate benchmark project
-        run: dotnet restore candidate/LiteDB.Benchmarks/LiteDB.Benchmarks.csproj
+        if: steps.refs.outputs.run_benchmarks == 'true'
+        working-directory: candidate
+        run: dotnet restore LiteDB.Benchmarks/LiteDB.Benchmarks.csproj
 
       - name: Run frozen baseline
+        if: steps.refs.outputs.run_benchmarks == 'true'
+        working-directory: baseline
         shell: bash
         run: |
           set -euo pipefail
           dotnet run -c Release \
-            --project baseline/LiteDB.Benchmarks/LiteDB.Benchmarks.csproj \
+            --project LiteDB.Benchmarks/LiteDB.Benchmarks.csproj \
             --no-restore -- \
             --filter '*Comparative*' \
             --exporters FullJSON \
             --artifacts "$GITHUB_WORKSPACE/perf-results/baseline"
 
+          count=$(find "$GITHUB_WORKSPACE/perf-results/baseline/results" -name '*report-full.json' -type f | wc -l)
+          if [ "$count" -lt 2 ]; then
+            echo "Expected both comparative benchmark reports, found $count." >&2
+            exit 1
+          fi
+
       - name: Run candidate
+        if: steps.refs.outputs.run_benchmarks == 'true'
+        working-directory: candidate
         shell: bash
         run: |
           set -euo pipefail
           dotnet run -c Release \
-            --project candidate/LiteDB.Benchmarks/LiteDB.Benchmarks.csproj \
+            --project LiteDB.Benchmarks/LiteDB.Benchmarks.csproj \
             --no-restore -- \
             --filter '*Comparative*' \
             --exporters FullJSON \
             --artifacts "$GITHUB_WORKSPACE/perf-results/candidate"
+
+          count=$(find "$GITHUB_WORKSPACE/perf-results/candidate/results" -name '*report-full.json' -type f | wc -l)
+          if [ "$count" -lt 2 ]; then
+            echo "Expected both comparative benchmark reports, found $count." >&2
+            exit 1
+          fi
 
       - name: Upload benchmark artifacts
         if: always()
@@ -111,11 +153,12 @@ jobs:
         run: |
           {
             echo "### LiteDB performance comparison"
-            echo "- Baseline: \`${BASELINE_REF}\`"
-            echo "- Candidate: \`${CANDIDATE_REF}\`"
+            echo "- Baseline: \`${BASELINE_REF}\` @ \`${{ steps.refs.outputs.baseline_sha }}\`"
+            echo "- Candidate: \`${CANDIDATE_REF}\` @ \`${{ steps.refs.outputs.candidate_sha }}\`"
+            echo "- Benchmarks executed: \`${{ steps.refs.outputs.run_benchmarks }}\`"
             echo "- Runner: \`ubuntu-22.04\`"
             echo "- Runtime: \`.NET 10\`"
             echo "- Artifact: \`perf-comparison-${{ github.run_id }}\`"
             echo
-            echo "The baseline and candidate execute sequentially on the same hosted runner. Treat small deltas as noise until repeated."
+            echo "When executed, the baseline and candidate run sequentially on the same hosted runner. Treat small deltas as noise until repeated."
           } >> "$GITHUB_STEP_SUMMARY"
