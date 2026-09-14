@@ -1,0 +1,64 @@
+name: Full Scalar Index Benchmarks
+
+on:
+  push:
+    branches:
+      - 'research/index-benchmark-base'
+    paths:
+      - '.github/workflows/index-benchmarks-full.yml'
+  workflow_dispatch:
+
+jobs:
+  full-index-suite:
+    name: Full scalar index baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore benchmark project
+        run: dotnet restore LiteDB.Benchmarks/LiteDB.Benchmarks.csproj
+
+      - name: Build benchmark project
+        run: dotnet build LiteDB.Benchmarks/LiteDB.Benchmarks.csproj --configuration Release --no-restore
+
+      - name: Run full scalar index benchmark suite
+        run: >-
+          dotnet run --configuration Release
+          --project LiteDB.Benchmarks/LiteDB.Benchmarks.csproj
+          --no-build --
+          --filter '*Indexes*'
+          --launchCount 1
+          --warmupCount 1
+          --iterationCount 3
+
+      - name: Verify benchmark measurements
+        run: |
+          test -d BenchmarkDotNet.Artifacts/results
+          reports=$(find BenchmarkDotNet.Artifacts/results -name '*-report-github.md' -type f | wc -l)
+          test "$reports" -gt 0
+          if grep -R -q 'There are not any results runs\|executed benchmarks: 0' BenchmarkDotNet.Artifacts; then
+            echo 'BenchmarkDotNet produced an empty benchmark result.'
+            exit 1
+          fi
+          for name in IndexPointLookupBenchmark IndexRangeScanBenchmark IndexInsertionBenchmark IndexBuildBenchmark; do
+            if ! find BenchmarkDotNet.Artifacts/results -name "*${name}-report-github.md" -print -quit | grep -q .; then
+              echo "Expected report missing: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Upload BenchmarkDotNet artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-index-benchmark-baseline
+          path: BenchmarkDotNet.Artifacts
+          if-no-files-found: warn
