@@ -51,7 +51,6 @@ namespace LiteDB.Benchmarks.Benchmarks
 
         [Benchmark(Baseline = true)]
         [InvocationCount(1)]
-        [UnrollFactor(1)]
         public void NonIndexedUpdateSingleCommit()
         {
             var payload = _payloadToggle ? PayloadA : PayloadB;
@@ -70,7 +69,6 @@ namespace LiteDB.Benchmarks.Benchmarks
 
         [Benchmark]
         [InvocationCount(1)]
-        [UnrollFactor(1)]
         public void IndexedUpdateSingleCommit()
         {
             _database.BeginTrans();
@@ -86,7 +84,6 @@ namespace LiteDB.Benchmarks.Benchmarks
 
         [Benchmark]
         [InvocationCount(1)]
-        [UnrollFactor(1)]
         public void IndexedUpdateCommitEach()
         {
             for (var id = 1; id <= TransactionSize; id++)
