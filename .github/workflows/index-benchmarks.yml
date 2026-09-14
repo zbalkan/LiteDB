@@ -1,0 +1,52 @@
+name: Index Benchmark Smoke
+
+on:
+  push:
+    branches:
+      - 'research/index-*'
+    paths:
+      - 'LiteDB/**'
+      - 'LiteDB.Benchmarks/**'
+      - '.github/workflows/index-benchmarks.yml'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Scalar index benchmark smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET SDKs
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            8.0.x
+
+      - name: Restore benchmark project
+        run: dotnet restore LiteDB.Benchmarks/LiteDB.Benchmarks.csproj
+
+      - name: Build benchmark project
+        run: dotnet build LiteDB.Benchmarks/LiteDB.Benchmarks.csproj --configuration Release --no-restore
+
+      - name: Run point-lookup smoke benchmarks
+        run: >-
+          dotnet run --configuration Release
+          --project LiteDB.Benchmarks/LiteDB.Benchmarks.csproj
+          --no-build --
+          --filter '*IndexPointLookupBenchmark*'
+          --launchCount 1
+          --warmupCount 1
+          --iterationCount 3
+
+      - name: Upload BenchmarkDotNet artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: index-benchmark-smoke
+          path: BenchmarkDotNet.Artifacts
+          if-no-files-found: warn

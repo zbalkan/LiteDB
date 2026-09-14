@@ -1,4 +1,4 @@
-﻿using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Diagnosers;
 using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Exporters;
@@ -12,7 +12,7 @@ namespace LiteDB.Benchmarks
     {
         static void Main(string[] args)
         {
-            BenchmarkRunner.Run(typeof(Program).Assembly, DefaultConfig.Instance
+            var config = DefaultConfig.Instance
                 //.With(new BenchmarkDotNet.Filters.AnyCategoriesFilter(new[] { Benchmarks.Constants.Categories.GENERAL }))
                 //.AddFilter(new BenchmarkDotNet.Filters.AnyCategoriesFilter([Benchmarks.Constants.Categories.GENERAL]))
                 .AddJob(Job.Default.WithRuntime(CoreRuntime.Core80)
@@ -25,7 +25,9 @@ namespace LiteDB.Benchmarks
                     .WithGcForce(true))*/
                 .AddDiagnoser(MemoryDiagnoser.Default)
                 .AddExporter(BenchmarkReportExporter.Default, HtmlExporter.Default, MarkdownExporter.GitHub)
-                .KeepBenchmarkFiles());
+                .KeepBenchmarkFiles();
+
+            BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, config);
         }
     }
 }
