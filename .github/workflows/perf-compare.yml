@@ -139,6 +139,17 @@ jobs:
             exit 1
           fi
 
+      - name: Compare benchmark results
+        if: steps.refs.outputs.run_benchmarks == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python baseline/.github/scripts/compare_benchmarks.py \
+            --baseline perf-results/baseline/results \
+            --candidate perf-results/candidate/results \
+            --csv perf-results/comparison.csv \
+            --markdown perf-results/comparison.md
+
       - name: Upload benchmark artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -161,4 +172,8 @@ jobs:
             echo "- Artifact: \`perf-comparison-${{ github.run_id }}\`"
             echo
             echo "When executed, the baseline and candidate run sequentially on the same hosted runner. Treat small deltas as noise until repeated."
+            if [ -f perf-results/comparison.md ]; then
+              echo
+              cat perf-results/comparison.md
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
