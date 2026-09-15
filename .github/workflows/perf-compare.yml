@@ -17,6 +17,15 @@ on:
         required: true
         default: perf/voron
         type: string
+      suite:
+        description: Benchmark gate to execute
+        required: true
+        default: screen
+        type: choice
+        options:
+          - screen
+          - reopen
+          - durability
 
 permissions:
   contents: read
@@ -59,9 +68,29 @@ jobs:
           baseline_sha=$(git -C baseline rev-parse HEAD)
           candidate_sha=$(git -C candidate rev-parse HEAD)
           run_benchmarks=true
+          suite="${{ github.event_name == 'workflow_dispatch' && inputs.suite || 'screen' }}"
 
-          # Branch-alignment pushes are not useful benchmark runs. Keep perf/voron
-          # as the baseline-vs-baseline smoke branch so the harness itself remains tested.
+          case "$suite" in
+            screen)
+              filter='*ComparativeReadBenchmarks*'
+              balanced=false
+              ;;
+            reopen)
+              filter='*ComparativeReopenBenchmarks*'
+              balanced=true
+              ;;
+            durability)
+              filter='*ComparativeTransactionBenchmarks*'
+              balanced=true
+              ;;
+            *)
+              echo "Unsupported suite: $suite" >&2
+              exit 1
+              ;;
+          esac
+
+          # Alignment pushes are not useful benchmark runs. Keep perf/voron as
+          # the baseline-vs-baseline screen smoke branch so the harness remains tested.
           if [ "$GITHUB_EVENT_NAME" = "push" ] && \
              [ "$baseline_sha" = "$candidate_sha" ] && \
              [ "$GITHUB_REF_NAME" != "perf/voron" ]; then
@@ -71,6 +100,9 @@ jobs:
           echo "baseline_sha=$baseline_sha" >> "$GITHUB_OUTPUT"
           echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
           echo "run_benchmarks=$run_benchmarks" >> "$GITHUB_OUTPUT"
+          echo "suite=$suite" >> "$GITHUB_OUTPUT"
+          echo "filter=$filter" >> "$GITHUB_OUTPUT"
+          echo "balanced=$balanced" >> "$GITHUB_OUTPUT"
 
       - name: Record environment
         shell: bash
@@ -82,6 +114,8 @@ jobs:
             echo "baseline_sha=${{ steps.refs.outputs.baseline_sha }}"
             echo "candidate_ref=${CANDIDATE_REF}"
             echo "candidate_sha=${{ steps.refs.outputs.candidate_sha }}"
+            echo "suite=${{ steps.refs.outputs.suite }}"
+            echo "order_balanced=${{ steps.refs.outputs.balanced }}"
             echo "run_benchmarks=${{ steps.refs.outputs.run_benchmarks }}"
             echo
             dotnet --info
@@ -101,42 +135,45 @@ jobs:
         working-directory: candidate
         run: dotnet restore LiteDB.Benchmarks/LiteDB.Benchmarks.csproj
 
-      - name: Run frozen baseline
+      - name: Run benchmark gate
         if: steps.refs.outputs.run_benchmarks == 'true'
-        working-directory: baseline
         shell: bash
+        env:
+          BENCHMARK_FILTER: ${{ steps.refs.outputs.filter }}
+          ORDER_BALANCED: ${{ steps.refs.outputs.balanced }}
         run: |
           set -euo pipefail
-          dotnet run -c Release \
-            --project LiteDB.Benchmarks/LiteDB.Benchmarks.csproj \
-            --no-restore -- \
-            --filter '*Comparative*' \
-            --exporters FullJSON \
-            --artifacts "$GITHUB_WORKSPACE/perf-results/baseline"
 
-          count=$(find "$GITHUB_WORKSPACE/perf-results/baseline/results" -name '*report-full.json' -type f | wc -l)
-          if [ "$count" -lt 2 ]; then
-            echo "Expected both comparative benchmark reports, found $count." >&2
-            exit 1
-          fi
+          run_suite() {
+            local checkout="$1"
+            local output="$2"
+            (
+              cd "$checkout"
+              dotnet run -c Release \
+                --project LiteDB.Benchmarks/LiteDB.Benchmarks.csproj \
+                --no-restore -- \
+                --filter "$BENCHMARK_FILTER" \
+                --exporters FullJSON \
+                --artifacts "$GITHUB_WORKSPACE/perf-results/$output"
+            )
 
-      - name: Run candidate
-        if: steps.refs.outputs.run_benchmarks == 'true'
-        working-directory: candidate
-        shell: bash
-        run: |
-          set -euo pipefail
-          dotnet run -c Release \
-            --project LiteDB.Benchmarks/LiteDB.Benchmarks.csproj \
-            --no-restore -- \
-            --filter '*Comparative*' \
-            --exporters FullJSON \
-            --artifacts "$GITHUB_WORKSPACE/perf-results/candidate"
+            local count
+            count=$(find "$GITHUB_WORKSPACE/perf-results/$output/results" -name '*report-full.json' -type f | wc -l)
+            if [ "$count" -ne 1 ]; then
+              echo "Expected one benchmark report for $output, found $count." >&2
+              exit 1
+            fi
+          }
 
-          count=$(find "$GITHUB_WORKSPACE/perf-results/candidate/results" -name '*report-full.json' -type f | wc -l)
-          if [ "$count" -lt 2 ]; then
-            echo "Expected both comparative benchmark reports, found $count." >&2
-            exit 1
+          if [ "$ORDER_BALANCED" = "true" ]; then
+            # ABBA order reduces systematic first/second-run bias for I/O-heavy gates.
+            run_suite baseline baseline-a
+            run_suite candidate candidate-a
+            run_suite candidate candidate-b
+            run_suite baseline baseline-b
+          else
+            run_suite baseline baseline
+            run_suite candidate candidate
           fi
 
       - name: Compare benchmark results
@@ -144,11 +181,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python baseline/.github/scripts/compare_benchmarks.py \
-            --baseline perf-results/baseline/results \
-            --candidate perf-results/candidate/results \
-            --csv perf-results/comparison.csv \
-            --markdown perf-results/comparison.md
+          if [ "${{ steps.refs.outputs.balanced }}" = "true" ]; then
+            python baseline/.github/scripts/compare_benchmarks.py \
+              --baseline perf-results/baseline-a/results \
+              --baseline perf-results/baseline-b/results \
+              --candidate perf-results/candidate-a/results \
+              --candidate perf-results/candidate-b/results \
+              --csv perf-results/comparison.csv \
+              --markdown perf-results/comparison.md
+          else
+            python baseline/.github/scripts/compare_benchmarks.py \
+              --baseline perf-results/baseline/results \
+              --candidate perf-results/candidate/results \
+              --csv perf-results/comparison.csv \
+              --markdown perf-results/comparison.md
+          fi
 
       - name: Upload benchmark artifacts
         if: always()
@@ -166,12 +213,14 @@ jobs:
             echo "### LiteDB performance comparison"
             echo "- Baseline: \`${BASELINE_REF}\` @ \`${{ steps.refs.outputs.baseline_sha }}\`"
             echo "- Candidate: \`${CANDIDATE_REF}\` @ \`${{ steps.refs.outputs.candidate_sha }}\`"
+            echo "- Suite: \`${{ steps.refs.outputs.suite }}\`"
+            echo "- Order balanced: \`${{ steps.refs.outputs.balanced }}\`"
             echo "- Benchmarks executed: \`${{ steps.refs.outputs.run_benchmarks }}\`"
             echo "- Runner: \`ubuntu-22.04\`"
             echo "- Runtime: \`.NET 10\`"
             echo "- Artifact: \`perf-comparison-${{ github.run_id }}\`"
             echo
-            echo "When executed, the baseline and candidate run sequentially on the same hosted runner. Treat small deltas as noise until repeated."
+            echo "Hosted-runner timing changes below 10% are screening noise unless repeated; managed-allocation changes remain first-class evidence."
             if [ -f perf-results/comparison.md ]; then
               echo
               cat perf-results/comparison.md
