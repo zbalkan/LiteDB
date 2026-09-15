@@ -71,6 +71,12 @@ namespace LiteDB.Internals
                 new BsonDocument { ["_id"] = i, ["payload"] = new string('x', 6000) }));
             insert.Should().Throw<IOException>().WithMessage("injected WAL I/O failure");
 
+            if (log.LengthBeforeFailedWrite.HasValue)
+            {
+                log.Length.Should().Be(log.LengthBeforeFailedWrite.Value,
+                    "a partial WAL page write must be truncated back to its previous logical end");
+            }
+
             cache.WritablePages.Should().Be(0);
             cache.PinnedPages.Should().Be(0);
             cache.LoadingPages.Should().Be(0);
@@ -111,6 +117,7 @@ namespace LiteDB.Internals
         private sealed class FailingLogStream : MemoryStream
         {
             public int WritesUntilFailure { get; set; }
+            public long? LengthBeforeFailedWrite { get; private set; }
 
             public override long Length
             {
@@ -129,6 +136,7 @@ namespace LiteDB.Internals
             {
                 if (this.WritesUntilFailure > 0 && --this.WritesUntilFailure == 0)
                 {
+                    this.LengthBeforeFailedWrite = base.Length;
                     // Exercise rollback after a real partial stream write.
                     base.Write(buffer, offset, Math.Min(count, 127));
                     throw new IOException("injected WAL I/O failure");
