@@ -1,0 +1,110 @@
+name: Compare Scalar Index Research Branches
+
+on:
+  push:
+    branches:
+      - 'research/index-benchmark-comparison'
+    paths:
+      - '.github/workflows/index-benchmarks-compare.yml'
+  workflow_dispatch:
+
+jobs:
+  compare-index-branches:
+    name: Compare scalar index research branches
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out orchestration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Benchmark branches sequentially
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          branches=(
+            'research/index-benchmark-base'
+            'research/index-locality-control'
+            'research/index-bskiplist'
+            'research/index-cssl'
+            'research/index-write-optimized'
+          )
+
+          root="$RUNNER_TEMP/index-branch-comparison"
+          mkdir -p "$root/branches"
+
+          for branch in "${branches[@]}"; do
+            safe="${branch//\//__}"
+            echo "=== Benchmarking $branch ==="
+
+            git checkout --force "origin/$branch"
+            git clean -fdx
+
+            dotnet restore LiteDB.Benchmarks/LiteDB.Benchmarks.csproj
+            dotnet build LiteDB.Benchmarks/LiteDB.Benchmarks.csproj --configuration Release --no-restore
+
+            rm -rf BenchmarkDotNet.Artifacts
+            dotnet run --configuration Release \
+              --project LiteDB.Benchmarks/LiteDB.Benchmarks.csproj \
+              --no-build -- \
+              --filter '*Indexes*' \
+              --launchCount 1 \
+              --warmupCount 1 \
+              --iterationCount 3
+
+            test -d BenchmarkDotNet.Artifacts/results
+            reports=$(find BenchmarkDotNet.Artifacts/results -name '*-report-github.md' -type f | wc -l)
+            test "$reports" -gt 0
+
+            if grep -R -q 'There are not any results runs\|executed benchmarks: 0' BenchmarkDotNet.Artifacts; then
+              echo "BenchmarkDotNet produced an empty result for $branch."
+              exit 1
+            fi
+
+            out="$root/branches/$safe"
+            mkdir -p "$out"
+            cp BenchmarkDotNet.Artifacts/results/*-report-github.md "$out/"
+            printf '%s\n' "$branch" > "$out/BRANCH.txt"
+            git rev-parse HEAD > "$out/COMMIT.txt"
+          done
+
+          combined="$root/combined-index-benchmarks.md"
+          {
+            echo '# Scalar Index Branch Benchmark Comparison'
+            echo
+            echo 'All branches were benchmarked sequentially in one GitHub Actions job on the same runner.'
+            echo
+            for branch in "${branches[@]}"; do
+              safe="${branch//\//__}"
+              echo "## $branch"
+              echo
+              echo '```text'
+              echo "Commit: $(cat "$root/branches/$safe/COMMIT.txt")"
+              echo '```'
+              echo
+              for report in "$root/branches/$safe"/*-report-github.md; do
+                echo "### $(basename "$report")"
+                echo
+                cat "$report"
+                echo
+              done
+            done
+          } > "$combined"
+
+          cp .github/workflows/index-benchmarks-compare.yml "$root/workflow.yml"
+          find "$root" -maxdepth 3 -type f -print | sort
+
+      - name: Upload combined branch benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: scalar-index-branch-comparison
+          path: ${{ runner.temp }}/index-branch-comparison
+          if-no-files-found: error
