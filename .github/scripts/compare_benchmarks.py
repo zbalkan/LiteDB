@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Compare BenchmarkDotNet FullJSON result sets.
 
-This is intentionally a screening tool rather than a statistical significance test.
-It preserves the raw means/allocation values and reports observed deltas for identical
-benchmark identities across a frozen baseline and a candidate branch.
+This is a screening tool rather than a statistical significance test. Multiple
+--baseline and --candidate roots are supported so order-balanced runs can be
+collapsed using the median of independently measured BenchmarkDotNet means.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import csv
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from statistics import median
 from typing import Iterable
 
 
@@ -22,8 +23,8 @@ class Result:
     method: str
     parameters: str
     mean_ns: float | None
-    stddev_ns: float | None
     allocated_bytes: float | None
+    samples: int
 
     @property
     def key(self) -> tuple[str, str, str]:
@@ -34,7 +35,7 @@ def _number(value):
     return float(value) if isinstance(value, (int, float)) else None
 
 
-def load_results(root: Path) -> dict[tuple[str, str, str], Result]:
+def load_root(root: Path) -> dict[tuple[str, str, str], Result]:
     results: dict[tuple[str, str, str], Result] = {}
     for path in sorted(root.rglob("*-report-full.json")):
         data = json.loads(path.read_text(encoding="utf-8-sig"))
@@ -46,13 +47,40 @@ def load_results(root: Path) -> dict[tuple[str, str, str], Result]:
                 method=benchmark.get("Method") or benchmark.get("MethodTitle") or "",
                 parameters=benchmark.get("Parameters") or "",
                 mean_ns=_number(stats.get("Mean")),
-                stddev_ns=_number(stats.get("StandardDeviation")),
                 allocated_bytes=_number(memory.get("BytesAllocatedPerOperation")),
+                samples=1,
             )
             if item.key in results:
-                raise RuntimeError(f"Duplicate benchmark identity: {item.key}")
+                raise RuntimeError(f"Duplicate benchmark identity in {root}: {item.key}")
             results[item.key] = item
     return results
+
+
+def aggregate_results(roots: list[Path]) -> dict[tuple[str, str, str], Result]:
+    runs = [load_root(root) for root in roots]
+    if any(not run for run in runs):
+        empty = [str(root) for root, run in zip(roots, runs) if not run]
+        raise RuntimeError(f"No BenchmarkDotNet FullJSON results found under: {', '.join(empty)}")
+
+    keys = set().union(*(run.keys() for run in runs))
+    aggregated: dict[tuple[str, str, str], Result] = {}
+    for key in keys:
+        present = [run[key] for run in runs if key in run]
+        if len(present) != len(runs):
+            raise RuntimeError(f"Benchmark identity missing from one or more repeated runs: {key}")
+
+        means = [item.mean_ns for item in present if item.mean_ns is not None]
+        allocations = [item.allocated_bytes for item in present if item.allocated_bytes is not None]
+        suite, method, parameters = key
+        aggregated[key] = Result(
+            suite=suite,
+            method=method,
+            parameters=parameters,
+            mean_ns=median(means) if means else None,
+            allocated_bytes=median(allocations) if allocations else None,
+            samples=len(present),
+        )
+    return aggregated
 
 
 def delta_percent(candidate: float | None, baseline: float | None) -> float | None:
@@ -62,19 +90,25 @@ def delta_percent(candidate: float | None, baseline: float | None) -> float | No
 
 
 def screen(time_delta: float | None, alloc_delta: float | None) -> str:
+    """Conservative hosted-runner screening thresholds.
+
+    The Round 0 null control showed steady-state timing drift up to about 7.5%
+    and much larger file-I/O drift. A 10% timing threshold therefore avoids
+    classifying ordinary hosted-runner variation as an engine win.
+    """
     if time_delta is None:
         return "INCONCLUSIVE"
 
-    time_win = time_delta <= -5.0
-    time_loss = time_delta >= 5.0
-    alloc_win = alloc_delta is not None and alloc_delta <= -15.0
-    alloc_loss = alloc_delta is not None and alloc_delta >= 15.0
+    time_win = time_delta <= -10.0
+    time_loss = time_delta >= 10.0
+    alloc_win = alloc_delta is not None and alloc_delta <= -10.0
+    alloc_loss = alloc_delta is not None and alloc_delta >= 10.0
 
-    if (time_win and alloc_loss) or (alloc_win and time_loss):
+    if (time_win and alloc_loss) or (alloc_win and time_delta > 5.0):
         return "TRADE-OFF"
-    if time_loss or (alloc_loss and time_delta > 2.0):
+    if time_loss or (alloc_loss and time_delta > 5.0):
         return "REGRESSION"
-    if time_win or (alloc_win and time_delta <= 2.0):
+    if time_win or (alloc_win and time_delta <= 5.0):
         return "WIN"
     return "NEUTRAL"
 
@@ -101,6 +135,8 @@ def rows(
                 "suite": suite,
                 "method": method,
                 "parameters": parameters,
+                "baseline_samples": str(base.samples) if base else "",
+                "candidate_samples": str(cand.samples) if cand else "",
                 "baseline_mean_ns": fmt_number(base.mean_ns) if base else "",
                 "candidate_mean_ns": fmt_number(cand.mean_ns) if cand else "",
                 "time_delta_pct": "",
@@ -117,6 +153,8 @@ def rows(
             "suite": suite,
             "method": method,
             "parameters": parameters,
+            "baseline_samples": str(base.samples),
+            "candidate_samples": str(cand.samples),
             "baseline_mean_ns": fmt_number(base.mean_ns),
             "candidate_mean_ns": fmt_number(cand.mean_ns),
             "time_delta_pct": fmt_delta(time_delta),
@@ -133,6 +171,8 @@ def write_csv(path: Path, data: list[dict[str, str]]) -> None:
         "suite",
         "method",
         "parameters",
+        "baseline_samples",
+        "candidate_samples",
         "baseline_mean_ns",
         "candidate_mean_ns",
         "time_delta_pct",
@@ -152,16 +192,18 @@ def write_markdown(path: Path, data: list[dict[str, str]]) -> None:
     lines = [
         "# LiteDB benchmark comparison",
         "",
-        "Observed deltas are candidate relative to baseline. This is a screening report, not a statistical significance test.",
+        "Observed deltas are candidate relative to baseline. Repeated roots are aggregated by median. This is a screening report, not a statistical significance test.",
         "",
-        "| Suite | Method | Parameters | Baseline ns | Candidate ns | Time Δ | Baseline alloc B | Candidate alloc B | Alloc Δ | Screen |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---|",
+        "| Suite | Method | Parameters | B n | C n | Baseline ns | Candidate ns | Time Δ | Baseline alloc B | Candidate alloc B | Alloc Δ | Screen |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for row in data:
         values = [
             row["suite"],
             row["method"],
             row["parameters"],
+            row["baseline_samples"],
+            row["candidate_samples"],
             row["baseline_mean_ns"],
             row["candidate_mean_ns"],
             row["time_delta_pct"],
@@ -176,19 +218,14 @@ def write_markdown(path: Path, data: list[dict[str, str]]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--baseline", type=Path, required=True)
-    parser.add_argument("--candidate", type=Path, required=True)
+    parser.add_argument("--baseline", type=Path, action="append", required=True)
+    parser.add_argument("--candidate", type=Path, action="append", required=True)
     parser.add_argument("--csv", type=Path, required=True)
     parser.add_argument("--markdown", type=Path, required=True)
     args = parser.parse_args()
 
-    baseline = load_results(args.baseline)
-    candidate = load_results(args.candidate)
-    if not baseline:
-        raise RuntimeError("No baseline BenchmarkDotNet FullJSON results found")
-    if not candidate:
-        raise RuntimeError("No candidate BenchmarkDotNet FullJSON results found")
-
+    baseline = aggregate_results(args.baseline)
+    candidate = aggregate_results(args.candidate)
     data = list(rows(baseline, candidate))
     write_csv(args.csv, data)
     write_markdown(args.markdown, data)
