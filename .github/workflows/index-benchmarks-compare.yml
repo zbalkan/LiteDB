@@ -99,7 +99,6 @@ jobs:
             done
           } > "$combined"
 
-          cp .github/workflows/index-benchmarks-compare.yml "$root/workflow.yml"
           find "$root" -maxdepth 3 -type f -print | sort
 
       - name: Upload combined branch benchmark artifacts
