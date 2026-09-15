@@ -8,7 +8,7 @@ using BenchmarkDotNet.Attributes;
 namespace LiteDB.Benchmarks.Benchmarks
 {
     /// <summary>
-    /// Stable read workloads shared by all comparative performance branches.
+    /// Stable steady-state read workloads shared by all comparative performance branches.
     /// Keep the data shape and access sequence unchanged between branches.
     /// </summary>
     [MemoryDiagnoser]
@@ -96,18 +96,6 @@ namespace LiteDB.Benchmarks.Benchmarks
             });
 
             return checksum;
-        }
-
-        [IterationSetup(Target = nameof(RandomPointLookupAfterReopen))]
-        public void ReopenBeforeIteration()
-        {
-            Reopen();
-        }
-
-        [Benchmark(OperationsPerInvoke = ReadsPerInvoke)]
-        public int RandomPointLookupAfterReopen()
-        {
-            return LookupBatch(_randomIds);
         }
 
         [GlobalCleanup]
