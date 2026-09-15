@@ -178,6 +178,8 @@ namespace LiteDB.Engine
             // do a global write lock - only 1 thread can write on disk at time
             lock(stream)
             {
+                long? streamLength = null;
+
                 foreach (var page in pages)
                 {
                     var previousLogLength = _logLength;
@@ -187,7 +189,8 @@ namespace LiteDB.Engine
                     try
                     {
                         ENSURE(page.ShareCounter == BUFFER_WRITABLE, "to enqueue page, page must be writable");
-                        previousStreamLength = stream.Length;
+                        if (!streamLength.HasValue) streamLength = stream.Length;
+                        previousStreamLength = streamLength.Value;
                         var pageID = page.ReadUInt32(BasePage.P_PAGE_ID);
                         // Only this transaction can see its unconfirmed slots. Keep
                         // the confirmation page last so recovery sees every page.
@@ -210,6 +213,7 @@ namespace LiteDB.Engine
 
                         this.PreserveFileVersion(page);
                         stream.Write(page.Array, page.Offset, PAGE_SIZE);
+                        streamLength = Math.Max(streamLength.Value, page.Position + PAGE_SIZE);
 
                         // Publish only after the bytes are written to the stream.
                         // The callback can make the position visible to readers.
@@ -231,6 +235,7 @@ namespace LiteDB.Engine
                             {
                                 stream.SetLength(previousStreamLength.Value);
                                 _logFactory.TrimCapacity(stream);
+                                streamLength = previousStreamLength.Value;
                             }
                         }
 
