@@ -27,8 +27,10 @@ namespace LiteDB.Engine
 
         private readonly IndexPage _page;
         private readonly BufferSlice _segment;
+        private readonly PageAddress[] _links;
 
         private static readonly byte[] arrayByteEmpty = new byte[0];
+        private static readonly PageAddress[] arrayPageAddressEmpty = new PageAddress[0];
 
         /// <summary>
         /// Position of this node inside a IndexPage (not persist)
@@ -61,14 +63,16 @@ namespace LiteDB.Engine
         public PageAddress NextNode { get; private set; }
 
         /// <summary>
-        /// Link to prev value (used in skip lists - Prev.Length = Next.Length) [5 bytes]
+        /// Read-only indexed view over previous skip-list links.
+        /// Prev and Next share one interleaved backing array to avoid a second
+        /// managed array allocation for every materialized index node.
         /// </summary>
-        public PageAddress[] Prev { get; private set; }
+        public LinkView Prev => new LinkView(_links, 0);
 
         /// <summary>
-        /// Link to next value (used in skip lists - Prev.Length = Next.Length)
+        /// Read-only indexed view over next skip-list links.
         /// </summary>
-        public PageAddress[] Next { get; private set; }
+        public LinkView Next => new LinkView(_links, 1);
 
         /// <summary>
         /// Get index page reference
@@ -114,13 +118,12 @@ namespace LiteDB.Engine
             this.DataBlock = segment.ReadPageAddress(P_DATA_BLOCK);
             this.NextNode = segment.ReadPageAddress(P_NEXT_NODE);
 
-            this.Next = new PageAddress[this.Levels];
-            this.Prev = new PageAddress[this.Levels];
+            _links = this.Levels == 0 ? arrayPageAddressEmpty : new PageAddress[this.Levels * 2];
 
             for (var i = 0; i < this.Levels; i++)
             {
-                this.Prev[i] = segment.ReadPageAddress(P_PREV_NEXT + (i * PageAddress.SIZE * 2));
-                this.Next[i] = segment.ReadPageAddress(P_PREV_NEXT + (i * PageAddress.SIZE * 2) + PageAddress.SIZE);
+                _links[(i * 2)] = segment.ReadPageAddress(P_PREV_NEXT + (i * PageAddress.SIZE * 2));
+                _links[(i * 2) + 1] = segment.ReadPageAddress(P_PREV_NEXT + (i * PageAddress.SIZE * 2) + PageAddress.SIZE);
             }
 
             this.Key = segment.ReadIndexKey(P_KEY);
@@ -139,8 +142,7 @@ namespace LiteDB.Engine
             this.Levels = levels;
             this.DataBlock = dataBlock;
             this.NextNode = PageAddress.Empty;
-            this.Next = new PageAddress[levels];
-            this.Prev = new PageAddress[levels];
+            _links = levels == 0 ? arrayPageAddressEmpty : new PageAddress[levels * 2];
             this.Key = key;
 
             // persist in buffer read only data
@@ -173,8 +175,7 @@ namespace LiteDB.Engine
             this.Levels = 0;
             this.DataBlock = PageAddress.Empty;
             this.NextNode = PageAddress.Empty;
-            this.Next = new PageAddress[0];
-            this.Prev = new PageAddress[0];
+            _links = arrayPageAddressEmpty;
 
             // index node key IS document
             this.Key = doc;
@@ -199,7 +200,7 @@ namespace LiteDB.Engine
         {
             ENSURE(level <= this.Levels, "out of index in level");
 
-            this.Prev[level] = value;
+            _links[level * 2] = value;
 
             _segment.Write(value, P_PREV_NEXT + (level * PageAddress.SIZE * 2));
 
@@ -213,7 +214,7 @@ namespace LiteDB.Engine
         {
             ENSURE(level <= this.Levels, "out of index in level");
 
-            this.Next[level] = value;
+            _links[(level * 2) + 1] = value;
 
             _segment.Write(value, P_PREV_NEXT + (level * PageAddress.SIZE * 2) + PageAddress.SIZE);
 
@@ -225,12 +226,26 @@ namespace LiteDB.Engine
         /// </summary>
         public PageAddress GetNextPrev(byte level, int order)
         {
-            return order == Query.Ascending ? this.Next[level] : this.Prev[level];
+            return _links[(level * 2) + (order == Query.Ascending ? 1 : 0)];
         }
 
         public override string ToString()
         {
             return $"Pos: [{this.Position}] - Key: {this.Key}";
+        }
+
+        internal readonly struct LinkView
+        {
+            private readonly PageAddress[] _links;
+            private readonly int _offset;
+
+            public LinkView(PageAddress[] links, int offset)
+            {
+                _links = links;
+                _offset = offset;
+            }
+
+            public PageAddress this[int level] => _links[(level * 2) + _offset];
         }
     }
 }
