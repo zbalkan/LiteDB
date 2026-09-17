@@ -51,7 +51,8 @@ public sealed class BsonSourceGenerator : IIncrementalGenerator
             predicate: static (node, _) => node is ClassDeclarationSyntax or RecordDeclarationSyntax,
             transform: static (attributeContext, _) => DescribeModel(
                 (INamedTypeSymbol)attributeContext.TargetSymbol,
-                GetDiagnosticLocation(attributeContext.TargetNode)));
+                GetDiagnosticLocation(attributeContext.TargetNode)))
+            .WithTrackingName("ModelAnalysis");
 
         context.RegisterSourceOutput(models.Collect(), static (productionContext, results) =>
         {
@@ -1090,10 +1091,71 @@ public sealed class BsonSourceGenerator : IIncrementalGenerator
         public Location Create() => Location.Create(FilePath, SourceSpan, LineSpan);
     }
 
-    private sealed record ModelDescriptor(
-        string TypeName,
-        ImmutableArray<PropertyDescriptor> Properties,
-        bool CanEmitExecutionMap);
+    private sealed class ModelDescriptor : IEquatable<ModelDescriptor>
+    {
+        public ModelDescriptor(
+            string typeName,
+            ImmutableArray<PropertyDescriptor> properties,
+            bool canEmitExecutionMap)
+        {
+            TypeName = typeName;
+            Properties = properties;
+            CanEmitExecutionMap = canEmitExecutionMap;
+        }
+
+        public string TypeName { get; }
+
+        public ImmutableArray<PropertyDescriptor> Properties { get; }
+
+        public bool CanEmitExecutionMap { get; }
+
+        public bool Equals(ModelDescriptor? other)
+        {
+            if (ReferenceEquals(this, other))
+            {
+                return true;
+            }
+
+            if (other is null ||
+                CanEmitExecutionMap != other.CanEmitExecutionMap ||
+                !StringComparer.Ordinal.Equals(TypeName, other.TypeName) ||
+                Properties.Length != other.Properties.Length)
+            {
+                return false;
+            }
+
+            for (var index = 0; index < Properties.Length; index++)
+            {
+                if (!EqualityComparer<PropertyDescriptor>.Default.Equals(Properties[index], other.Properties[index]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return obj is ModelDescriptor other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var hashCode = StringComparer.Ordinal.GetHashCode(TypeName);
+                hashCode = (hashCode * 397) ^ CanEmitExecutionMap.GetHashCode();
+
+                foreach (var property in Properties)
+                {
+                    hashCode = (hashCode * 397) ^ property.GetHashCode();
+                }
+
+                return hashCode;
+            }
+        }
+    }
 
     private sealed record PropertyDescriptor(
         string Name,
