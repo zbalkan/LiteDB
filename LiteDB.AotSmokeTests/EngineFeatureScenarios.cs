@@ -373,6 +373,10 @@ namespace LiteDB.AotSmokeTests
             {
                 // A locked temporary file must never fail the smoke test transcript.
             }
+            catch (UnauthorizedAccessException)
+            {
+                // Windows can still hold the file when the process that opened it is shutting down.
+            }
         }
     }
 }

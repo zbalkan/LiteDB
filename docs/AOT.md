@@ -156,7 +156,7 @@ Run the complete regular-versus-published feature-parity gate with:
 ./scripts/validate-aot-feature-parity.sh
 ```
 
-The script needs the Native AOT toolchain (`clang` and the platform development libraries). Set `RUNTIME_IDENTIFIER` to test a different runtime identifier or `AOT_PARITY_OUTPUT_ROOT` to retain the three publish trees and transcripts in another location.
+The script runs on Linux, Windows, and macOS, and CI runs it on all three. It detects the host runtime identifier (`linux-x64`, `linux-arm64`, `win-x64`, `osx-x64`, or `osx-arm64`) and publishes for it; set `RUNTIME_IDENTIFIER` to override that choice or `AOT_PARITY_OUTPUT_ROOT` to retain the three publish trees and transcripts in another location. It needs the host's Native AOT toolchain: `clang` and the platform development libraries on Linux, the MSVC build tools on Windows, and the Xcode command line tools on macOS. On Windows run it from a Bash shell such as Git Bash.
 
 Run the separate trimmed, non-AOT gate with:
 
@@ -171,4 +171,4 @@ Run the package-boundary Native AOT validation with:
 ./scripts/validate-source-generator-package-consumer.sh
 ```
 
-The command creates a temporary local feed and NuGet cache, packs a matching LiteDB/runtime-analyzer pair, verifies the analyzer archive, restores an external package consumer, and publishes/runs that consumer as Native AOT. It needs the Linux Native AOT toolchain and uses NuGet.org only for SDK Native AOT and linker tooling; the LiteDB package pair itself is created in the local feed.
+The command creates a temporary local feed and NuGet cache, packs a matching LiteDB/runtime-analyzer pair, verifies the analyzer archive, restores an external package consumer, and publishes/runs that consumer as Native AOT. Like the parity script, it publishes for the detected host runtime identifier and runs on Linux, Windows, and macOS, so it needs that host's Native AOT toolchain. It uses NuGet.org only for SDK Native AOT and linker tooling; the LiteDB package pair itself is created in the local feed.

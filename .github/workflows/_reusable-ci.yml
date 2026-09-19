@@ -97,9 +97,19 @@ jobs:
           --logger "console;verbosity=detailed"
           ${{ matrix.item.msbuildProps }}
 
-  aot-smoke-linux:
-    name: Native AOT smoke (Linux)
-    runs-on: ubuntu-latest
+  aot-smoke:
+    name: Native AOT smoke (${{ matrix.display }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - display: Linux
+            os: ubuntu-latest
+          - display: Windows
+            os: windows-latest
+          - display: macOS
+            os: macos-latest
 
     steps:
       - name: Check out repository
@@ -112,7 +122,10 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      # Windows and macOS runner images already ship the Native AOT toolchain (the MSVC build
+      # tools and the Xcode command line tools respectively).
       - name: Install Native AOT prerequisites
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
 
       - name: Compile source-generator external consumer
@@ -127,9 +140,11 @@ jobs:
           --settings tests.runsettings
 
       - name: Validate packaged source-generator consumer
+        shell: bash
         run: ./scripts/validate-source-generator-package-consumer.sh
 
       - name: Compare regular, trimmed, and Native AOT feature coverage
+        shell: bash
         run: ./scripts/validate-aot-feature-parity.sh
 
   build-macos:

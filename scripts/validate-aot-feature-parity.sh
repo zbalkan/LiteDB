@@ -1,13 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-project="$repo_root/LiteDB.AotSmokeTests/LiteDB.AotSmokeTests.csproj"
-runtime_identifier="${RUNTIME_IDENTIFIER:-linux-x64}"
-output_root="${AOT_PARITY_OUTPUT_ROOT:-$repo_root/artifacts/aot-feature-parity}"
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# shellcheck source=lib/platform.sh
+. "$repo_root/scripts/lib/platform.sh"
+
+# Run from the repository root and keep every path relative to it. Git Bash on Windows hands the
+# .NET CLI a POSIX absolute path it cannot resolve, so relative paths keep one script portable.
+cd "$repo_root"
+
+project="LiteDB.AotSmokeTests/LiteDB.AotSmokeTests.csproj"
+runtime_identifier="$(litedb_runtime_identifier)"
+executable="LiteDB.AotSmokeTests$(litedb_executable_suffix "$runtime_identifier")"
+output_root="${AOT_PARITY_OUTPUT_ROOT:-artifacts/aot-feature-parity}"
 
 rm -rf "$output_root"
 mkdir -p "$output_root"
+
+printf '[AOT-PARITY] Validating runtime identifier %s.\n' "$runtime_identifier"
 
 publish_and_run() {
     local mode="$1"
@@ -25,7 +36,7 @@ publish_and_run() {
         "$@"
 
     printf '[AOT-PARITY] Running %s mode.\n' "$mode"
-    "$publish_dir/LiteDB.AotSmokeTests" | tee "$log"
+    "$publish_dir/$executable" | tee "$log"
 }
 
 # The same executable test suite is intentionally used in every mode. Comparing
@@ -47,4 +58,4 @@ for mode in trimmed native-aot; do
     fi
 done
 
-printf '[AOT-PARITY] Passed: regular, trimmed, and Native AOT builds completed the identical feature transcript.\n'
+printf '[AOT-PARITY] Passed: regular, trimmed, and Native AOT builds completed the identical feature transcript on %s.\n' "$runtime_identifier"
