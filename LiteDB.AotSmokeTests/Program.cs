@@ -5,6 +5,8 @@ using System.Linq;
 
 using LiteDB.Generated;
 
+using static LiteDB.AotSmokeTests.SmokeAssert;
+
 #nullable enable
 namespace LiteDB.AotSmokeTests
 {
@@ -15,22 +17,31 @@ namespace LiteDB.AotSmokeTests
             var databasePath = Path.Combine(Path.GetTempPath(), $"litedb-aot-{Guid.NewGuid():N}.db");
 
             Console.WriteLine("LiteDB Native AOT smoke test");
-            Console.WriteLine("This executable validates core document operations, stream-backed storage, and source-generated typed mappings.");
+            Console.WriteLine("This executable validates core document operations, stream-backed storage, source-generated typed mappings,");
+            Console.WriteLine("LINQ query translation, indexes, transactions, SQL commands, maintenance pragmas, encryption, and the document runtime.");
             Console.WriteLine("Each scenario reports its completed checks. Any failed requirement stops the program and prints its reason.");
             Console.WriteLine();
 
             try
             {
-                RunScenario("1/3 Document and expression operations", () =>
+                RunScenario("1/10 Document and expression operations", () =>
                 {
                     using var database = new LiteDatabase(databasePath);
                     RunDocumentAndExpressionScenarios(database);
                 });
-                RunScenario("2/3 Stream-backed database round trip", RunStreamBackedScenario);
-                RunScenario("3/3 Source-generated typed mappings", () => RunGeneratedTypedMappingScenario(databasePath));
+                RunScenario("2/10 Stream-backed database round trip", RunStreamBackedScenario);
+                RunScenario("3/10 Source-generated typed mappings", () => RunGeneratedTypedMappingScenario(databasePath));
+                RunScenario("4/10 LINQ query translation", LinqQueryScenarios.Run);
+                RunScenario("5/10 Index management and query plans", EngineFeatureScenarios.RunIndexScenario);
+                RunScenario("6/10 Transactions", EngineFeatureScenarios.RunTransactionScenario);
+                RunScenario("7/10 SQL command surface", EngineFeatureScenarios.RunSqlScenario);
+                RunScenario("8/10 Maintenance, pragmas, and collection management", EngineFeatureScenarios.RunMaintenanceScenario);
+                RunScenario("9/10 Encrypted file database", EngineFeatureScenarios.RunEncryptedDatabaseScenario);
+                RunScenario("10/10 Document, JSON, and expression runtime", DocumentRuntimeScenarios.Run);
 
                 Console.WriteLine("[RESULT] All Native AOT smoke scenarios passed.");
-                Console.WriteLine("The executable successfully exercised LiteDB persistence, querying, stream storage, and generated typed mappings.");
+                Console.WriteLine("The executable successfully exercised LiteDB persistence, LINQ and SQL querying, indexes, transactions,");
+                Console.WriteLine("stream and encrypted storage, maintenance commands, the document runtime, and generated typed mappings.");
             }
             finally
             {
@@ -799,14 +810,6 @@ namespace LiteDB.AotSmokeTests
             Console.WriteLine("        Passed: empty, numeric, raw BSON, recursive dynamic values, and unsupported-value rejection.");
         }
 
-        private static void RunScenario(string name, Action scenario)
-        {
-            Console.WriteLine($"[SCENARIO] {name}");
-            scenario();
-            Console.WriteLine($"[PASS] {name}");
-            Console.WriteLine();
-        }
-
         private static void RequireCanonicalDateTimeOffsetValue(BsonValue value, DateTimeOffset expected)
         {
             Require(value.IsDateTime &&
@@ -825,34 +828,11 @@ namespace LiteDB.AotSmokeTests
                 ? DateTime.SpecifyKind(value.UtcDateTime, DateTimeKind.Unspecified).ToUniversalTime().Ticks
                 : value.UtcTicks - (value.UtcTicks % TimeSpan.TicksPerMillisecond);
 
-        private static void RequireThrows<TException>(Action action, string message)
-            where TException : Exception
-        {
-            try
-            {
-                action();
-            }
-            catch (TException)
-            {
-                return;
-            }
-
-            throw new InvalidOperationException(message);
-        }
-
         private static void RequireNativeScalar(string field, bool condition, string expected, string actual)
         {
             Require(condition,
                 $"The source-generated Native AOT native scalar round trip failed for '{field}'. Expected: '{expected}'. Actual: '{actual}'.");
             Console.WriteLine($"        Passed: {field}.");
-        }
-
-        private static void Require(bool condition, string message)
-        {
-            if (!condition)
-            {
-                throw new InvalidOperationException(message);
-            }
         }
     }
 
